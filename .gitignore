@@ -1,0 +1,28 @@
+# Binaries and build outputs
+/litellm-mux
+bin/
+dist/
+
+# Environment and secrets
+.env
+*.env
+.env.*
+*.key
+*.pem
+credentials/
+secrets/
+
+# Go workspace and cache
+vendor/
+*.test
+*.prof
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
