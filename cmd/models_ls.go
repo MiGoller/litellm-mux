@@ -7,7 +7,6 @@ import (
 
 	"github.com/MiGoller/litellm-mux/internal/client"
 	"github.com/MiGoller/litellm-mux/internal/filter"
-	"github.com/MiGoller/litellm-mux/internal/models"
 	"github.com/spf13/cobra"
 )
 
@@ -32,12 +31,7 @@ var lsCmd = &cobra.Command{
 		cfg := GetConfig()
 		apiClient := client.NewClient(cfg.LiteLLMURL, cfg.MasterKey)
 
-		var resp models.ModelInfoResponse
-		if err := apiClient.Request("GET", "/model/info", nil, &resp); err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching models: %v\n", err)
-			os.Exit(1)
-		}
-
+		resp := fetchModels(apiClient)
 		if len(resp.Data) == 0 {
 			fmt.Println("No models found.")
 			return
@@ -100,8 +94,16 @@ var lsCmd = &cobra.Command{
 			alignments = append(alignments, "<")
 		}
 
+		// Persistent -f filters (set on the `models` group) select the model
+		// set; positional args remain display-level regex filters on the
+		// shown columns.
+		selectedModels := resp.Data
+		if len(flagModelsFilters) > 0 {
+			selectedModels = selectModels(resp, nil)
+		}
+
 		var rows [][]string
-		for _, m := range resp.Data {
+		for _, m := range selectedModels {
 			modelInfo := m.ModelInfo
 			litellmParams := m.LitellmParams
 
@@ -114,16 +116,12 @@ var lsCmd = &cobra.Command{
 				}
 			}
 
-			modelID, _ := m.ModelInfo["id"].(string)
+			modelID, _ := modelInfo["id"].(string)
 			if modelID == "" {
-				modelID, _ = m.ModelInfo["model_id"].(string)
+				modelID, _ = modelInfo["model_id"].(string)
 			}
 			if modelID == "" {
-				if mid, ok := m.ModelInfo["id"].(string); ok {
-					modelID = mid
-				} else {
-					modelID = "-"
-				}
+				modelID = "-"
 			}
 
 			provider, _ := litellmParams["custom_llm_provider"].(string)
@@ -139,15 +137,7 @@ var lsCmd = &cobra.Command{
 				providerModel = "-"
 			}
 
-			// Extract tags (can be []interface{} or []string or string)
-			tagsStr := "-"
-			if tVal, ok := modelInfo["model_info_tags"]; ok && tVal != nil {
-				tagsStr = formatTags(tVal)
-			} else if tVal, ok := modelInfo["tags"]; ok && tVal != nil {
-				tagsStr = formatTags(tVal)
-			} else if tVal, ok := litellmParams["tags"]; ok && tVal != nil {
-				tagsStr = formatTags(tVal)
-			}
+			tagsStr := formatTags(litellmParams["tags"])
 
 			row := []string{modelName}
 			if showModelID {
@@ -215,7 +205,13 @@ var lsCmd = &cobra.Command{
 			rows = append(rows, row)
 		}
 
-		compiledFilters, _ := filter.ParseFilters(args, headers)
+		compiledFilters, rawFilters := filter.ParseFilters(args, headers)
+		if len(rawFilters) > 0 {
+			for _, rf := range rawFilters {
+				fmt.Fprintf(os.Stderr, "Error: invalid filter (bad regex): %s\n", rf)
+			}
+			os.Exit(1)
+		}
 
 		var filteredRows [][]string
 		for _, row := range rows {

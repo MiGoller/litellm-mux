@@ -77,7 +77,37 @@ litellm-mux models rm "my-model"
 litellm-mux models rm -f "provider:deepinfra" -y
 ```
 
-Filters use the same syntax as `models ls`: either a bare regex matched against all columns, or `column:regex` where `column` is one of `MODEL NAME`, `PROVIDER`, `MAX TOKENS`, `INPUT / 1M ($)`, `OUTPUT / 1M ($)`, `MODE`, `API BASE`, `CREDENTIAL`. Multiple filters are combined with logical AND.
+Filters use the same syntax everywhere: either a bare regex matched against all columns, or `column:regex` where `column` is one of `MODEL NAME`, `ID`, `PROVIDER`, `PROVIDER MODEL`, `TAGS`, `MAX TOKENS`, `INPUT / 1M ($)`, `OUTPUT / 1M ($)`, `MODE`, `API BASE`, `CREDENTIAL`. Multiple filters are combined with logical AND. Invalid regexes abort with an error instead of silently matching everything.
+
+### Manage tags
+
+```bash
+# Show tags (same view as 'models ls --tags', accepts all ls flags)
+litellm-mux models tags ls --id
+
+# Add one or more tags (--tag and --tags are equivalent, repeatable)
+litellm-mux models -f "provider:deepinfra" tags add -t "paid" -t "team:dev"
+
+# Remove tags
+litellm-mux models tags rm --tags "test" -f "id:<model-uuid>"
+
+# Preview tag changes without applying them
+litellm-mux models tags add -f "provider:gemini" -t "vision" -n
+```
+
+Tag updates show a before/after plan, support `--dry-run` (`-n`) and ask for confirmation unless `-y` is given.
+
+## Model selection on the `models` level
+
+The `-f` / `--filter` flag lives on the `models` command group and applies to **all** sub-commands (`ls`, `rm`, `copy`, `tags`):
+
+```bash
+litellm-mux models -f "provider:deepinfra" ls
+litellm-mux models -f "id:9ac05a6a-..." tags add -t "paid"
+litellm-mux models -f "credential:main" rm -y
+```
+
+Positional model names/IDs select models directly in addition to filters.
 
 ### Copy / multiplex models
 
@@ -102,10 +132,11 @@ When copying to multiple credentials, the new model names get a credential-deriv
 ```text
 cmd/litellm-mux/main.go   # Entry point
 cmd/root.go               # Root command, persistent flags (--url, --master-key)
-cmd/models.go             # `models` command group
+cmd/models.go             # `models` command group, shared model selection (-f filters)
 cmd/models_ls.go          # `models ls`
 cmd/models_rm.go          # `models rm`
 cmd/models_copy.go        # `models copy`
+cmd/models_tag.go         # `models tags ls/add/rm`
 internal/config/          # Config resolution (flags > env > .env)
 internal/client/          # LiteLLM API client (Bearer auth)
 internal/models/          # API response types
