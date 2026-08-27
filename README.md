@@ -2,15 +2,18 @@
 
 A Go-based CLI and proxy tool for managing models on [LiteLLM](https://docs.litellm.ai/) proxy gateways.
 
-`litellm-mux` lets you list, delete, and copy/multiplex model deployments on a LiteLLM proxy — including multiplexing a single source model across multiple credentials of the same provider.
+`litellm-mux` lets you list, delete, copy/multiplex, enable/disable, manage tags, guardrails, and set token pricing (including cache read/write costs) on a LiteLLM proxy.
 
 ## Features
 
-- **List models** (`models ls`) with selectable columns: provider, provider model string, LiteLLM model ID, tags, max tokens, input/output costs, mode, API base, and credential
-- **Filtering** with reusable regex filters, optionally scoped to a column (e.g. `provider:deepinfra`)
+- **List models** (`models ls`) with selectable columns: provider, provider model string, LiteLLM model ID, tags, guardrails, status, max tokens, input/output costs, cache read/write costs, mode, API base, and credential
+- **Filtering** with reusable regex filters, optionally scoped to any column (e.g. `provider:deepinfra`, `status:active`)
 - **Delete models** (`models rm`) by exact name/ID or by filter, with dry-run and confirmation prompt
 - **Copy / multiplex models** (`models copy`) to another provider or credential, optionally fanning out across all other credentials of the target provider
-- **Dry-run support** for destructive operations
+- **Enable / Disable models** (`models enable` / `models disable`) to block or unblock model access without deleting historical data
+- **Manage tags** (`models tags`) and **Guardrails** (`models guardrails`) with before/after plans
+- **Manage model pricing / costs** (`models costs set`) to set per-token pricing (input, output, cache read, cache write) per 1M tokens
+- **Dry-run support** for all destructive or mutating operations (`-n` / `--dry-run`)
 - Configuration via CLI flags, environment variables, or `.env` file
 
 ## Installation
@@ -49,20 +52,20 @@ litellm-mux [command] --url <URL> --master-key <KEY>
 # Minimal view (model name + provider)
 litellm-mux models ls -l
 
-# All columns
+# All columns (including guardrails, status, and cache costs)
 litellm-mux models ls -a
 
 # Specific columns
-litellm-mux models ls --id --tags --credential
+litellm-mux models ls --id --tags --status --costs
 
 # Model names only, on one line (handy for scripting)
 litellm-mux models ls -1
 
 # Filter by regex, optionally column-scoped
-litellm-mux models ls "gemini" "provider:deepinfra"
+litellm-mux models ls "gemini" "provider:deepinfra" "status:active"
 ```
 
-Available flags for `models ls`: `-l/--minimal`, `--id`, `--model-string`, `--tags`, `--tokens`, `--costs`, `--mode`, `--api-base`, `--credential`, `-a/--all`, `-1/--oneline`.
+Available flags for `models ls`: `-l/--minimal`, `--id`, `--model-string`, `--tags`, `--guardrails`, `--status`, `--tokens`, `--costs`, `--mode`, `--api-base`, `--credential`, `-a/--all`, `-1/--oneline`.
 
 ### Delete models
 
@@ -77,37 +80,35 @@ litellm-mux models rm "my-model"
 litellm-mux models rm -f "provider:deepinfra" -y
 ```
 
-Filters use the same syntax everywhere: either a bare regex matched against all columns, or `column:regex` where `column` is one of `MODEL NAME`, `ID`, `PROVIDER`, `PROVIDER MODEL`, `TAGS`, `MAX TOKENS`, `INPUT / 1M ($)`, `OUTPUT / 1M ($)`, `MODE`, `API BASE`, `CREDENTIAL`. Multiple filters are combined with logical AND. Invalid regexes abort with an error instead of silently matching everything.
+Filters use the same syntax everywhere: either a bare regex matched against all columns, or `column:regex`. Multiple filters are combined with logical AND.
 
-### Manage tags
+### Enable / Disable models
 
 ```bash
-# Show tags (same view as 'models ls --tags', accepts all ls flags)
-litellm-mux models tags ls --id
+# Disable models matching a filter
+litellm-mux models -f "provider:openrouter" disable --dry-run
+litellm-mux models -f "provider:openrouter" disable -y
 
-# Add one or more tags (--tag and --tags are equivalent, repeatable)
+# Enable models
+litellm-mux models -f "provider:openrouter" enable
+```
+
+### Manage tags and guardrails
+
+```bash
+# Add tags
 litellm-mux models -f "provider:deepinfra" tags add -t "paid" -t "team:dev"
 
-# Remove tags
-litellm-mux models tags rm --tags "test" -f "id:<model-uuid>"
-
-# Preview tag changes without applying them
-litellm-mux models tags add -f "provider:gemini" -t "vision" -n
+# Assign guardrails
+litellm-mux models -f "provider:gemini" guardrails add --guardrail "my-guardrail"
 ```
 
-Tag updates show a before/after plan, support `--dry-run` (`-n`) and ask for confirmation unless `-y` is given.
-
-## Model selection on the `models` level
-
-The `-f` / `--filter` flag lives on the `models` command group and applies to **all** sub-commands (`ls`, `rm`, `copy`, `tags`):
+### Set model pricing / costs
 
 ```bash
-litellm-mux models -f "provider:deepinfra" ls
-litellm-mux models -f "id:9ac05a6a-..." tags add -t "paid"
-litellm-mux models -f "credential:main" rm -y
+# Set input, output, cache read and cache write costs per 1M tokens
+litellm-mux models -f "provider:gemini" costs set --input 0.15 --output 0.60 --cache-read 0.03 --cache-write 0.07
 ```
-
-Positional model names/IDs select models directly in addition to filters.
 
 ### Copy / multiplex models
 
@@ -120,12 +121,7 @@ litellm-mux models copy "source-model" "new-name" --credential "other-cred"
 
 # Fan out: create one copy per other credential of the target provider
 litellm-mux models copy "source-model" --all-other-credentials
-
-# Copy with an overridden provider model string
-litellm-mux models copy "source-model" --provider openrouter --model-string "google/gemini-2.5-flash"
 ```
-
-When copying to multiple credentials, the new model names get a credential-derived suffix automatically.
 
 ## Project structure
 
@@ -137,6 +133,9 @@ cmd/models_ls.go          # `models ls`
 cmd/models_rm.go          # `models rm`
 cmd/models_copy.go        # `models copy`
 cmd/models_tag.go         # `models tags ls/add/rm`
+cmd/models_guardrails.go  # `models guardrails ls/add/rm`
+cmd/models_enable.go      # `models enable / disable`
+cmd/models_costs.go       # `models costs set`
 internal/config/          # Config resolution (flags > env > .env)
 internal/client/          # LiteLLM API client (Bearer auth)
 internal/models/          # API response types
