@@ -17,7 +17,7 @@ var flagModelsFilters []string
 // Filters are always evaluated against this full row so that every column
 // is filterable regardless of the display options of the sub-command.
 var fullHeaders = []string{
-	"MODEL NAME", "ID", "PROVIDER", "PROVIDER MODEL", "TAGS",
+	"MODEL NAME", "ID", "PROVIDER", "PROVIDER MODEL", "TAGS", "GUARDRAILS", "STATUS",
 	"MAX TOKENS", "INPUT / 1M ($)", "OUTPUT / 1M ($)", "MODE", "API BASE", "CREDENTIAL",
 }
 
@@ -91,8 +91,24 @@ func modelToFullRow(m models.ModelData) []string {
 		cred = c
 	}
 
+	statusStr := "active"
+	if dl, ok := litellmParams["disabled"]; ok {
+		disabled := false
+		switch v := dl.(type) {
+		case bool:
+			disabled = v
+		case string:
+			disabled = (v == "true" || v == "1")
+		case float64:
+			disabled = (v == 1)
+		}
+		if disabled {
+			statusStr = "disabled"
+		}
+	}
+
 	return []string{
-		modelName, modelID, provider, providerModel, formatTags(litellmParams["tags"]),
+		modelName, modelID, provider, providerModel, formatTags(litellmParams["tags"]), formatTags(litellmParams["guardrails"]), statusStr,
 		maxTokens, inputStr, outputStr, mode, apiBase, cred,
 	}
 }

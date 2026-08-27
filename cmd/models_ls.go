@@ -20,6 +20,8 @@ var (
 	flagModelStr   bool
 	flagModelID    bool
 	flagTags       bool
+	flagGuardrails bool
+	flagStatus     bool
 	flagAll        bool
 	flagOneline    bool
 )
@@ -45,8 +47,10 @@ var lsCmd = &cobra.Command{
 		showModelStr := flagAll || flagModelStr
 		showModelID := flagAll || flagModelID
 		showTags := flagAll || flagTags
+		showGuardrails := flagAll || flagGuardrails
+		showStatus := flagAll || flagStatus
 
-		if !flagMinimal && !flagTokens && !flagCosts && !flagMode && !flagApiBase && !flagCredential && !flagModelStr && !flagModelID && !flagTags && !flagAll && !flagOneline {
+		if !flagMinimal && !flagTokens && !flagCosts && !flagMode && !flagApiBase && !flagCredential && !flagModelStr && !flagModelID && !flagTags && !flagGuardrails && !flagStatus && !flagAll && !flagOneline {
 			showTokens = true
 			showCosts = true
 		}
@@ -71,6 +75,14 @@ var lsCmd = &cobra.Command{
 		}
 		if showTags {
 			headers = append(headers, "TAGS")
+			alignments = append(alignments, "<")
+		}
+		if showGuardrails {
+			headers = append(headers, "GUARDRAILS")
+			alignments = append(alignments, "<")
+		}
+		if showStatus {
+			headers = append(headers, "STATUS")
 			alignments = append(alignments, "<")
 		}
 		if showTokens {
@@ -150,6 +162,27 @@ var lsCmd = &cobra.Command{
 			}
 			if showTags {
 				row = append(row, tagsStr)
+			}
+			if showGuardrails {
+				row = append(row, formatTags(litellmParams["guardrails"]))
+			}
+			if showStatus {
+				statusStr := "active"
+				if dl, ok := litellmParams["disabled"]; ok {
+					disabled := false
+					switch v := dl.(type) {
+					case bool:
+						disabled = v
+					case string:
+						disabled = (v == "true" || v == "1")
+					case float64:
+						disabled = (v == 1)
+					}
+					if disabled {
+						statusStr = "disabled"
+					}
+				}
+				row = append(row, statusStr)
 			}
 
 			if showTokens {
@@ -313,6 +346,8 @@ func init() {
 	lsCmd.Flags().BoolVar(&flagModelStr, "model-string", false, "Show the model string at the provider")
 	lsCmd.Flags().BoolVar(&flagModelID, "id", false, "Show the LiteLLM model ID")
 	lsCmd.Flags().BoolVar(&flagTags, "tags", false, "Show model tags")
+	lsCmd.Flags().BoolVar(&flagGuardrails, "guardrails", false, "Show assigned guardrails")
+	lsCmd.Flags().BoolVar(&flagStatus, "status", false, "Show model status (active/disabled)")
 	lsCmd.Flags().BoolVarP(&flagAll, "all", "a", false, "Show all columns")
 	lsCmd.Flags().BoolVarP(&flagOneline, "oneline", "1", false, "Model names only, on a single line")
 }
