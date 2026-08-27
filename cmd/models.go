@@ -18,7 +18,7 @@ var flagModelsFilters []string
 // is filterable regardless of the display options of the sub-command.
 var fullHeaders = []string{
 	"MODEL NAME", "ID", "PROVIDER", "PROVIDER MODEL", "TAGS", "GUARDRAILS", "STATUS",
-	"MAX TOKENS", "INPUT / 1M ($)", "OUTPUT / 1M ($)", "MODE", "API BASE", "CREDENTIAL",
+	"MAX TOKENS", "INPUT / 1M ($)", "OUTPUT / 1M ($)", "CACHE READ / 1M ($)", "CACHE WRITE / 1M ($)", "MODE", "API BASE", "CREDENTIAL",
 }
 
 // modelToFullRow converts a model into the full row representation used for filtering.
@@ -65,11 +65,27 @@ func modelToFullRow(m models.ModelData) []string {
 
 	inputStr := "-"
 	outputStr := "-"
+	cacheReadStr := "-"
 	if ic, ok := modelInfo["input_cost_per_token"].(float64); ok {
 		inputStr = fmt.Sprintf("%.2f", ic*1_000_000)
+	} else if ic, ok := litellmParams["input_cost_per_token"].(float64); ok {
+		inputStr = fmt.Sprintf("%.2f", ic*1_000_000)
 	}
+
 	if oc, ok := modelInfo["output_cost_per_token"].(float64); ok {
 		outputStr = fmt.Sprintf("%.2f", oc*1_000_000)
+	} else if oc, ok := litellmParams["output_cost_per_token"].(float64); ok {
+		outputStr = fmt.Sprintf("%.2f", oc*1_000_000)
+	}
+
+	if crc, ok := modelInfo["cache_read_input_token_cost"].(float64); ok {
+		cacheReadStr = fmt.Sprintf("%.2f", crc*1_000_000)
+	} else if crc, ok := modelInfo["cache_read_input_cost_per_token"].(float64); ok {
+		cacheReadStr = fmt.Sprintf("%.2f", crc*1_000_000)
+	} else if crc, ok := litellmParams["cache_read_input_token_cost"].(float64); ok {
+		cacheReadStr = fmt.Sprintf("%.2f", crc*1_000_000)
+	} else if crc, ok := litellmParams["cache_read_input_cost_per_token"].(float64); ok {
+		cacheReadStr = fmt.Sprintf("%.2f", crc*1_000_000)
 	}
 
 	mode := "-"
@@ -107,9 +123,24 @@ func modelToFullRow(m models.ModelData) []string {
 		}
 	}
 
+	cacheWriteStr := "-"
+	if cwc, ok := modelInfo["cache_creation_input_token_cost"].(float64); ok {
+		cacheWriteStr = fmt.Sprintf("%.2f", cwc*1_000_000)
+	} else if cwc, ok := modelInfo["cache_creation_input_cost_per_token"].(float64); ok {
+		cacheWriteStr = fmt.Sprintf("%.2f", cwc*1_000_000)
+	} else if cwc, ok := modelInfo["cache_write_input_token_cost"].(float64); ok {
+		cacheWriteStr = fmt.Sprintf("%.2f", cwc*1_000_000)
+	} else if cwc, ok := litellmParams["cache_creation_input_token_cost"].(float64); ok {
+		cacheWriteStr = fmt.Sprintf("%.2f", cwc*1_000_000)
+	} else if cwc, ok := litellmParams["cache_creation_input_cost_per_token"].(float64); ok {
+		cacheWriteStr = fmt.Sprintf("%.2f", cwc*1_000_000)
+	} else if cwc, ok := litellmParams["cache_write_input_token_cost"].(float64); ok {
+		cacheWriteStr = fmt.Sprintf("%.2f", cwc*1_000_000)
+	}
+
 	return []string{
 		modelName, modelID, provider, providerModel, formatTags(litellmParams["tags"]), formatTags(litellmParams["guardrails"]), statusStr,
-		maxTokens, inputStr, outputStr, mode, apiBase, cred,
+		maxTokens, inputStr, outputStr, cacheReadStr, cacheWriteStr, mode, apiBase, cred,
 	}
 }
 
