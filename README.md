@@ -113,14 +113,20 @@ litellm-mux models -f "provider:gemini" costs set --input 0.15 --output 0.60 --c
 ### Copy / multiplex models
 
 ```bash
-# Preview the copy plan
+# Preview the copy plan (dry-run)
 litellm-mux models copy -n "source-model" "new-name"
 
-# Copy to a new credential of the same provider
-litellm-mux models copy "source-model" "new-name" --credential "other-cred"
+# Copy to a specific target credential
+litellm-mux models copy "source-model" "new-name" --credential "Provider Credential B"
 
-# Fan out: create one copy per other credential of the target provider
+# Fan out across all other credentials of the target provider
 litellm-mux models copy "source-model" --all-other-credentials
+
+# Fan out with same name across all other credentials (enables LiteLLM load balancing / failover)
+litellm-mux models copy "source-model" --all-other-credentials --same-name
+
+# Filter by provider and credential before copying / fanning out
+litellm-mux models -f "provider:anthropic" -f "credential:Team Key A" copy "model-v1" --all-other-credentials --same-name --dry-run
 ```
 
 ## Project structure

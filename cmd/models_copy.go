@@ -16,6 +16,7 @@ var (
 	flagCopyProvider    string
 	flagCopyCredential  string
 	flagCopyAllCreds    bool
+	flagCopySameName    bool
 	flagCopyModelString string
 	flagCopyDryRun      bool
 	flagCopyYes         bool
@@ -51,28 +52,35 @@ var copyCmd = &cobra.Command{
 		}
 
 		var sourceModelObj *models.ModelData
-		for _, m := range resp.Data {
-			mName := m.ModelName
-			if mName == "" {
-				if mn, ok := m.ModelInfo["model_name"].(string); ok {
-					mName = mn
+		
+		// If filters are specified, use selectModels to find the source model
+		var candidateModels []models.ModelData
+		if len(flagModelsFilters) > 0 {
+			candidateModels = selectModels(resp, []string{sourceTarget})
+		} else {
+			for _, m := range resp.Data {
+				mName := m.ModelName
+				if mName == "" {
+					if mn, ok := m.ModelInfo["model_name"].(string); ok {
+						mName = mn
+					}
+				}
+				mID, _ := m.ModelInfo["id"].(string)
+				if mID == "" {
+					mID, _ = m.ModelInfo["model_id"].(string)
+				}
+
+				if sourceTarget == mName || sourceTarget == mID {
+					candidateModels = append(candidateModels, m)
 				}
 			}
-			mID, _ := m.ModelInfo["id"].(string)
-			if mID == "" {
-				mID, _ = m.ModelInfo["model_id"].(string)
-			}
-
-			if sourceTarget == mName || sourceTarget == mID {
-				sourceModelObj = &m
-				break
-			}
 		}
 
-		if sourceModelObj == nil {
-			fmt.Printf("Error: source model '%s' was not found on the server.\n", sourceTarget)
+		if len(candidateModels) == 0 {
+			fmt.Printf("Error: source model '%s' was not found on the server (or no model matched the filters).\n", sourceTarget)
 			os.Exit(1)
 		}
+		sourceModelObj = &candidateModels[0]
 
 		srcName := sourceModelObj.ModelName
 		if srcName == "" {
@@ -153,26 +161,63 @@ var copyCmd = &cobra.Command{
 
 		var copiesToCreate []CopyInfo
 
+		// Build a lookup set of existing models (Name + Credential/Provider) to prevent duplicates
+		existingModels := make(map[string]bool)
+		for _, m := range resp.Data {
+			mName := m.ModelName
+			if mName == "" {
+				if mn, ok := m.ModelInfo["model_name"].(string); ok {
+					mName = mn
+				}
+			}
+			p, _ := m.LitellmParams["custom_llm_provider"].(string)
+			if p == "" {
+				p, _ = m.LitellmParams["model"].(string)
+			}
+			c, _ := m.ModelInfo["litellm_credential_name"].(string)
+			if c == "" {
+				c, _ = m.LitellmParams["litellm_credential_name"].(string)
+			}
+			if mName != "" && c != "" {
+				existingModels[fmt.Sprintf("%s|%s|%s", mName, p, c)] = true
+			}
+		}
+
 		for _, cred := range targetCredentialsList {
 			var newName string
-			if newModelNameArg != "" {
-				if len(targetCredentialsList) > 1 {
-					parts := strings.Split(cred, " - ")
-					credSuffix := strings.ToLower(parts[len(parts)-1])
-					credSuffix = strings.NewReplacer(" ", "-", "@", "-at-", ".", "-").Replace(credSuffix)
-					newName = fmt.Sprintf("%s-%s", newModelNameArg, credSuffix)
-				} else {
+			if flagCopySameName {
+				if newModelNameArg != "" {
 					newName = newModelNameArg
-				}
-			} else {
-				if len(targetCredentialsList) > 1 {
-					parts := strings.Split(cred, " - ")
-					credSuffix := strings.ToLower(parts[len(parts)-1])
-					credSuffix = strings.NewReplacer(" ", "-", "@", "-at-", ".", "-").Replace(credSuffix)
-					newName = fmt.Sprintf("%s-%s", srcName, credSuffix)
 				} else {
 					newName = srcName
 				}
+			} else {
+				if newModelNameArg != "" {
+					if len(targetCredentialsList) > 1 {
+						parts := strings.Split(cred, " - ")
+						credSuffix := strings.ToLower(parts[len(parts)-1])
+						credSuffix = strings.NewReplacer(" ", "-", "@", "-at-", ".", "-").Replace(credSuffix)
+						newName = fmt.Sprintf("%s-%s", newModelNameArg, credSuffix)
+					} else {
+						newName = newModelNameArg
+					}
+				} else {
+					if len(targetCredentialsList) > 1 {
+						parts := strings.Split(cred, " - ")
+						credSuffix := strings.ToLower(parts[len(parts)-1])
+						credSuffix = strings.NewReplacer(" ", "-", "@", "-at-", ".", "-").Replace(credSuffix)
+						newName = fmt.Sprintf("%s-%s", srcName, credSuffix)
+					} else {
+						newName = srcName
+					}
+				}
+			}
+
+			// Check if a model with this name and target credential already exists
+			modelKey := fmt.Sprintf("%s|%s|%s", newName, targetProvider, cred)
+			if existingModels[modelKey] {
+				fmt.Printf("Skipping target: Model '%s' with credential '%s' already exists on server.\n", newName, cred)
+				continue
 			}
 
 			payload := make(map[string]interface{})
@@ -255,6 +300,7 @@ func init() {
 	copyCmd.Flags().StringVar(&flagCopyProvider, "provider", "", "Target provider")
 	copyCmd.Flags().StringVar(&flagCopyCredential, "credential", "", "Credential name")
 	copyCmd.Flags().BoolVar(&flagCopyAllCreds, "all-other-credentials", false, "Automatically create copies for all other credentials of the target provider")
+	copyCmd.Flags().BoolVar(&flagCopySameName, "same-name", false, "Keep the exact same model name for all copies (enables LiteLLM load balancing / failover)")
 	copyCmd.Flags().StringVar(&flagCopyModelString, "model-string", "", "Optional target model string")
 	copyCmd.Flags().BoolVarP(&flagCopyDryRun, "dry-run", "n", false, "Dry run: show the plan without creating anything")
 	copyCmd.Flags().BoolVarP(&flagCopyYes, "yes", "y", false, "Skip confirmation prompt")
