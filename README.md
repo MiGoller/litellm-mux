@@ -61,11 +61,14 @@ litellm-mux models ls --id --tags --status --costs
 # Model names only, on one line (handy for scripting)
 litellm-mux models ls -1
 
+# Collapse duplicates (same name + provider from load-balanced deployments)
+litellm-mux models ls -u
+
 # Filter by regex, optionally column-scoped
 litellm-mux models ls "gemini" "provider:deepinfra" "status:active"
 ```
 
-Available flags for `models ls`: `-l/--minimal`, `--id`, `--model-string`, `--tags`, `--guardrails`, `--status`, `--tokens`, `--costs`, `--mode`, `--api-base`, `--credential`, `-a/--all`, `-1/--oneline`.
+Available flags for `models ls`: `-l/--minimal`, `--id`, `--model-string`, `--tags`, `--guardrails`, `--status`, `--tokens`, `--costs`, `--mode`, `--api-base`, `--credential`, `-a/--all`, `-1/--oneline`, `-u/--unique`.
 
 ### Delete models
 

@@ -108,19 +108,31 @@ func modelToFullRow(m models.ModelData) []string {
 	}
 
 	statusStr := "active"
-	if dl, ok := litellmParams["disabled"]; ok {
-		disabled := false
-		switch v := dl.(type) {
-		case bool:
-			disabled = v
-		case string:
-			disabled = (v == "true" || v == "1")
-		case float64:
-			disabled = (v == 1)
+	isInactive := false
+	for _, mp := range []map[string]interface{}{modelInfo, litellmParams} {
+		for _, key := range []string{"disabled", "blocked"} {
+			if dl, ok := mp[key]; ok {
+				val := false
+				switch v := dl.(type) {
+				case bool:
+					val = v
+				case string:
+					val = (v == "true" || v == "1")
+				case float64:
+					val = (v == 1)
+				}
+				if val {
+					isInactive = true
+					break
+				}
+			}
 		}
-		if disabled {
-			statusStr = "disabled"
+		if isInactive {
+			break
 		}
+	}
+	if isInactive {
+		statusStr = "disabled"
 	}
 
 	cacheWriteStr := "-"

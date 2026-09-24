@@ -24,6 +24,7 @@ var (
 	flagStatus     bool
 	flagAll        bool
 	flagOneline    bool
+	flagUnique     bool
 )
 
 var lsCmd = &cobra.Command{
@@ -53,6 +54,14 @@ var lsCmd = &cobra.Command{
 		if !flagMinimal && !flagTokens && !flagCosts && !flagMode && !flagApiBase && !flagCredential && !flagModelStr && !flagModelID && !flagTags && !flagGuardrails && !flagStatus && !flagAll && !flagOneline {
 			showTokens = true
 			showCosts = true
+		}
+
+		// In unique mode the columns that distinguish duplicate deployments
+		// (ID, API base, credential) are meaningless, so hide them.
+		if flagUnique {
+			showModelID = false
+			showApiBase = false
+			showCredential = false
 		}
 
 		var headers []string
@@ -168,19 +177,31 @@ var lsCmd = &cobra.Command{
 			}
 			if showStatus {
 				statusStr := "active"
-				if dl, ok := litellmParams["disabled"]; ok {
-					disabled := false
-					switch v := dl.(type) {
-					case bool:
-						disabled = v
-					case string:
-						disabled = (v == "true" || v == "1")
-					case float64:
-						disabled = (v == 1)
+				isInactive := false
+				for _, mp := range []map[string]interface{}{modelInfo, litellmParams} {
+					for _, key := range []string{"disabled", "blocked"} {
+						if dl, ok := mp[key]; ok {
+							val := false
+							switch v := dl.(type) {
+							case bool:
+								val = v
+							case string:
+								val = (v == "true" || v == "1")
+							case float64:
+								val = (v == 1)
+							}
+							if val {
+								isInactive = true
+								break
+							}
+						}
 					}
-					if disabled {
-						statusStr = "disabled"
+					if isInactive {
+						break
 					}
+				}
+				if isInactive {
+					statusStr = "disabled"
 				}
 				row = append(row, statusStr)
 			}
@@ -281,6 +302,20 @@ var lsCmd = &cobra.Command{
 			}
 		}
 
+		if flagUnique {
+			seen := make(map[string]bool)
+			var uniqueRows [][]string
+			for _, row := range filteredRows {
+				key := strings.Join(row, "\x00")
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				uniqueRows = append(uniqueRows, row)
+			}
+			filteredRows = uniqueRows
+		}
+
 		if len(filteredRows) == 0 {
 			fmt.Println("No models match the filter.")
 			return
@@ -290,6 +325,18 @@ var lsCmd = &cobra.Command{
 			var names []string
 			for _, r := range filteredRows {
 				names = append(names, r[0])
+			}
+			if flagUnique {
+				seen := make(map[string]bool)
+				var uniq []string
+				for _, n := range names {
+					if seen[n] {
+						continue
+					}
+					seen[n] = true
+					uniq = append(uniq, n)
+				}
+				names = uniq
 			}
 			fmt.Println(strings.Join(names, " "))
 			return
@@ -378,4 +425,5 @@ func init() {
 	lsCmd.Flags().BoolVar(&flagStatus, "status", false, "Show model status (active/disabled)")
 	lsCmd.Flags().BoolVarP(&flagAll, "all", "a", false, "Show all columns")
 	lsCmd.Flags().BoolVarP(&flagOneline, "oneline", "1", false, "Model names only, on a single line")
+	lsCmd.Flags().BoolVarP(&flagUnique, "unique", "u", false, "Collapse rows that are identical across the shown columns (e.g. same name + provider). Hides ID, API base and credential columns.")
 }
